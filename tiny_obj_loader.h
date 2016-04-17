@@ -5,6 +5,7 @@
 //
 
 //
+// version 0.9.20: Fixes creating per-face material using `usemtl`(#68)
 // version 0.9.17: Support n-polygon and crease tag(OpenSubdiv extension)
 // version 0.9.16: Make tinyobjloader header-only
 // version 0.9.15: Change API to handle no mtl file case correctly(#58)
@@ -37,8 +38,8 @@
 //   #include "tiny_obj_loader.h"
 //
 
-#ifndef TINY_OBJ_LOADER_H
-#define TINY_OBJ_LOADER_H
+#ifndef TINY_OBJ_LOADER_H_
+#define TINY_OBJ_LOADER_H_
 
 #include <string>
 #include <vector>
@@ -158,9 +159,6 @@ void LoadMtl(std::map<std::string, int> &material_map, // [output]
 #include <cstddef>
 #include <cctype>
 
-#include <string>
-#include <vector>
-#include <map>
 #include <fstream>
 #include <sstream>
 
@@ -174,8 +172,8 @@ MaterialReader::~MaterialReader() {}
 
 struct vertex_index {
   int v_idx, vt_idx, vn_idx;
-  vertex_index() {}
-  vertex_index(int idx) : v_idx(idx), vt_idx(idx), vn_idx(idx) {}
+  vertex_index() : v_idx(-1), vt_idx(-1), vn_idx(-1) {}
+  explicit vertex_index(int idx) : v_idx(idx), vt_idx(idx), vn_idx(idx) {}
   vertex_index(int vidx, int vtidx, int vnidx)
       : v_idx(vidx), vt_idx(vtidx), vn_idx(vnidx) {}
 };
@@ -978,21 +976,19 @@ bool LoadObj(std::vector<shape_t> &shapes,       // [output]
       sscanf(token, "%s", namebuf);
 #endif
 
-      // Create face group per material.
-      bool ret =
-          exportFaceGroupToShape(shape, vertexCache, v, vn, vt, faceGroup, tags,
-                                 material, name, true, triangulate);
-      if (ret) {
-        shapes.push_back(shape);
-      }
-      shape = shape_t();
-      faceGroup.clear();
-
+      int newMaterialId = -1;
       if (material_map.find(namebuf) != material_map.end()) {
-        material = material_map[namebuf];
+        newMaterialId = material_map[namebuf];
       } else {
         // { error!! material not found }
-        material = -1;
+      }
+
+      if (newMaterialId != material) {
+        // Create per-face material
+        exportFaceGroupToShape(shape, vertexCache, v, vn, vt, faceGroup, tags,
+                               material, name, true, triangulate);
+        faceGroup.clear();
+        material = newMaterialId;
       }
 
       continue;
@@ -1090,7 +1086,11 @@ bool LoadObj(std::vector<shape_t> &shapes,       // [output]
 
       char namebuf[4096];
       token += 2;
+#ifdef _MSC_VER
+      sscanf_s(token, "%s", namebuf, (unsigned)_countof(namebuf));
+#else
       sscanf(token, "%s", namebuf);
+#endif
       tag.name = std::string(namebuf);
 
       token += tag.name.size() + 1;
@@ -1114,7 +1114,11 @@ bool LoadObj(std::vector<shape_t> &shapes,       // [output]
       for (size_t i = 0; i < static_cast<size_t>(ts.num_strings); ++i) {
         char stringValueBuffer[4096];
 
+#ifdef _MSC_VER
+        sscanf_s(token, "%s", stringValueBuffer, (unsigned)_countof(stringValueBuffer));
+#else
         sscanf(token, "%s", stringValueBuffer);
+#endif
         tag.stringValues[i] = stringValueBuffer;
         token += tag.stringValues[i].size() + 1;
       }
@@ -1140,4 +1144,4 @@ bool LoadObj(std::vector<shape_t> &shapes,       // [output]
 
 #endif
 
-#endif // TINY_OBJ_LOADER_H
+#endif // TINY_OBJ_LOADER_H_
